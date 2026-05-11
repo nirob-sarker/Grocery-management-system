@@ -1,0 +1,15 @@
+<h2>Order Confirmed - #{{orderId}}</h2>
+<p>Hello {{name}},</p>
+<p>Your order has been placed successfully.</p>
+
+<p><b>Status:</b> {{status}}</p>
+<p><b>Total:</b> {{total}}</p>
+
+<h3>Items</h3>
+<ul>
+  {{#each items}}
+    <li>{{this.name}} × {{this.qty}} @ {{this.unitPrice}}</li>
+  {{/each}}
+</ul>
+
+<p>Thanks,<br/>GMS Team</p>
