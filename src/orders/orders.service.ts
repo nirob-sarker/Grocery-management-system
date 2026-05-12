@@ -32,18 +32,19 @@ export class OrdersService {
     const itemsSummary: { name: string; qty: number; unitPrice: string }[] = [];
 
     try {
+      // create order first
       const order = queryRunner.manager.create(Order, {
-        customer,
+        customer: { id: customer.id } as any, // safe: relation by id
         status: OrderStatus.PENDING,
         totalAmount: '0',
-        items: [],
       });
+
       const savedOrder = await queryRunner.manager.save(Order, order);
 
       let total = 0;
 
       for (const it of dto.items) {
-        // IMPORTANT: lock product row WITHOUT JOINs (avoid eager relations)
+        // lock product row WITHOUT JOINs (avoid eager relations)
         const product = await queryRunner.manager
           .getRepository(Product)
           .createQueryBuilder('p')
@@ -52,7 +53,6 @@ export class OrdersService {
           .getOne();
 
         if (!product) throw new BadRequestException(`Invalid productId: ${it.productId}`);
-
         if (product.stockQty < it.qty) {
           throw new BadRequestException(`Insufficient stock for ${product.name}. Available: ${product.stockQty}`);
         }
@@ -60,12 +60,13 @@ export class OrdersService {
         product.stockQty -= it.qty;
         await queryRunner.manager.save(Product, product);
 
-        const unitPrice = product.price; // numeric string
+        const unitPrice = product.price;
         total += Number(unitPrice) * it.qty;
 
+        // IMPORTANT: set relations explicitly by id to avoid null FK
         const item = queryRunner.manager.create(OrderItem, {
-          order: savedOrder,
-          product,
+          order: { id: savedOrder.id } as any,
+          product: { id: product.id } as any,
           quantity: it.qty,
           unitPrice,
         });
@@ -79,7 +80,7 @@ export class OrdersService {
 
       await queryRunner.commitTransaction();
 
-      // Email: order confirmed
+      // customer email
       await this.mailService.sendOrderConfirmed(customer.email, {
         orderId: finalOrder.id,
         name: customer.fullName,
@@ -88,7 +89,7 @@ export class OrdersService {
         items: itemsSummary,
       });
 
-      // Low stock alert (optional)
+      // low stock alert
       const threshold = Number(this.config.get<string>('LOW_STOCK_THRESHOLD') ?? 5);
       const adminStaffEmails = await this.usersService.findEmailsByRoles([UserRole.ADMIN, UserRole.STAFF]);
 
@@ -126,7 +127,6 @@ export class OrdersService {
     const order = await this.orderRepo.findOne({
       where: { id: orderId },
       relations: { items: true },
-      order: { items: { id: 'ASC' } } as any,
     });
     if (!order) throw new NotFoundException('Order not found');
 
@@ -177,7 +177,6 @@ export class OrdersService {
       if (!isAdmin && !isCustomerOwner) {
         throw new ForbiddenException('Not allowed to cancel this order');
       }
-
       if (order.status !== OrderStatus.PENDING && !isAdmin) {
         throw new BadRequestException('Only pending orders can be cancelled by customer');
       }
