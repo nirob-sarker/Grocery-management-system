@@ -31,4 +31,15 @@ export class InventoryController {
     const n = threshold ? Number(threshold) : undefined;
     return this.inventoryService.report(Number.isFinite(n as any) ? n : undefined);
   }
+
+  @ApiOperation({ summary: 'Inventory logs (Staff/Admin)' })
+  @ApiBearerAuth()
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiQuery({ name: 'offset', required: false, example: 0 })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.STAFF, UserRole.ADMIN)
+  @Get('logs')
+  logs(@Query('limit') limit?: string, @Query('offset') offset?: string) {
+    return this.inventoryService.logs(Number(limit ?? 20), Number(offset ?? 0));
+  }
 }

@@ -26,6 +26,19 @@ export class User {
   @Column({ type: 'text', nullable: true })
   address?: string;
 
+  // OTP reset support (we reuse these columns)
+  @Column({ type: 'text', nullable: true })
+  passwordResetTokenHash?: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  passwordResetTokenExpiresAt?: Date | null;
+
+  @Column({ type: 'int', default: 0 })
+  passwordResetAttempts: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  passwordResetLastSentAt?: Date | null;
+
   @OneToMany(() => Order, (order) => order.customer)
   ordersPlaced: Order[];
 

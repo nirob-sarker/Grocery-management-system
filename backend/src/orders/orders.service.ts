@@ -24,6 +24,25 @@ export class OrdersService {
     @InjectRepository(OrderItem) private readonly itemRepo: Repository<OrderItem>,
   ) {}
 
+  async listAll(params: { status?: string; limit?: number; offset?: number }) {
+    const limit = Math.min(params.limit ?? 20, 100);
+    const offset = Math.max(params.offset ?? 0, 0);
+
+    const qb = this.orderRepo
+      .createQueryBuilder('o')
+      .leftJoinAndSelect('o.customer', 'customer')
+      .leftJoinAndSelect('o.processedBy', 'processedBy')
+      .leftJoinAndSelect('o.items', 'items')
+      .orderBy('o.placedAt', 'DESC')
+      .take(limit)
+      .skip(offset);
+
+    if (params.status) qb.andWhere('o.status = :status', { status: params.status });
+
+    const [data, total] = await qb.getManyAndCount();
+    return { total, limit, offset, data };
+  }
+
   async placeOrder(customer: any, dto: CreateOrderDto) {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -32,9 +51,8 @@ export class OrdersService {
     const itemsSummary: { name: string; qty: number; unitPrice: string }[] = [];
 
     try {
-      // create order first
       const order = queryRunner.manager.create(Order, {
-        customer: { id: customer.id } as any, // safe: relation by id
+        customer: { id: customer.id } as any,
         status: OrderStatus.PENDING,
         totalAmount: '0',
       });
@@ -44,7 +62,6 @@ export class OrdersService {
       let total = 0;
 
       for (const it of dto.items) {
-        // lock product row WITHOUT JOINs (avoid eager relations)
         const product = await queryRunner.manager
           .getRepository(Product)
           .createQueryBuilder('p')
@@ -63,7 +80,6 @@ export class OrdersService {
         const unitPrice = product.price;
         total += Number(unitPrice) * it.qty;
 
-        // IMPORTANT: set relations explicitly by id to avoid null FK
         const item = queryRunner.manager.create(OrderItem, {
           order: { id: savedOrder.id } as any,
           product: { id: product.id } as any,
@@ -80,7 +96,6 @@ export class OrdersService {
 
       await queryRunner.commitTransaction();
 
-      // customer email
       await this.mailService.sendOrderConfirmed(customer.email, {
         orderId: finalOrder.id,
         name: customer.fullName,
@@ -89,7 +104,6 @@ export class OrdersService {
         items: itemsSummary,
       });
 
-      // low stock alert
       const threshold = Number(this.config.get<string>('LOW_STOCK_THRESHOLD') ?? 5);
       const adminStaffEmails = await this.usersService.findEmailsByRoles([UserRole.ADMIN, UserRole.STAFF]);
 
@@ -181,7 +195,6 @@ export class OrdersService {
         throw new BadRequestException('Only pending orders can be cancelled by customer');
       }
 
-      // restore stock
       if (order.items?.length) {
         for (const item of order.items) {
           const product = await queryRunner.manager

@@ -45,7 +45,6 @@ export class InventoryService {
     const savedLog = await this.logRepo.save(log);
 
     const adminEmails = await this.usersService.findEmailsByRoles([UserRole.ADMIN]);
-
     await this.mailService.sendRestockLogged(adminEmails, {
       productName: product.name,
       sku: product.sku,
@@ -72,5 +71,14 @@ export class InventoryService {
       lowStock,
       products,
     };
+  }
+
+  async logs(limit = 20, offset = 0) {
+    const [data, total] = await this.logRepo.findAndCount({
+      take: Math.min(limit, 100),
+      skip: Math.max(offset, 0),
+      order: { loggedAt: 'DESC' },
+    });
+    return { total, limit, offset, data };
   }
 }
